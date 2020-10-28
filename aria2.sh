@@ -163,6 +163,10 @@ LICENSE
     sed -i "s@^\(rpc-secret=\).*@\1$(date +%s%N | md5sum | head -c 20)@" ${aria2_conf}
     sed -i "s@^#\(retry-on-.*=\).*@\1true@" ${aria2_conf}
     sed -i "s@^\(max-connection-per-server=\).*@\132@" ${aria2_conf}
+    # 取消注释
+    sed -i "s/#drive-dir.*/drive-dir=\/upload/g" ${aria2_conf_dir}/script.conf
+    # 修改标识符
+    sed -i "s/drive-name=.*/drive-name=google/g" ${aria2_conf_dir}/script.conf
     touch aria2.session
     chmod +x *.sh
     echo -e "${Info} Aria2 完美配置下载完成！"
@@ -487,6 +491,7 @@ Read_config() {
         aria2_passwd=$(echo -e "${conf_text}" | grep "^rpc-secret=" | awk -F "=" '{print $NF}')
         aria2_bt_port=$(echo -e "${conf_text}" | grep "^listen-port=" | awk -F "=" '{print $NF}')
         aria2_dht_port=$(echo -e "${conf_text}" | grep "^dht-listen-port=" | awk -F "=" '{print $NF}')
+        aria2_complete_sh=$(echo -e "${conf_text}" | grep "^on-download-complete=" | awk -F "=" '{print $NF}')
     fi
 }
 View_Aria2() {
@@ -658,7 +663,7 @@ Set_iptables() {
     fi
 }
 Update_Shell() {
-    sh_new_ver=$(wget -qO- -t1 -T3 "https://raw.githubusercontent.com/P3TERX/aria2.sh/master/aria2.sh" | grep 'sh_ver="' | awk -F "=" '{print $NF}' | sed 's/\"//g' | head -1) && sh_new_type="github"
+    sh_new_ver=$(wget -qO- -t1 -T3 "https://raw.githubusercontent.com/spark135246/aria2.sh/master/aria2.sh" | grep 'sh_ver="' | awk -F "=" '{print $NF}' | sed 's/\"//g' | head -1) && sh_new_type="github"
     [[ -z ${sh_new_ver} ]] && echo -e "${Error} 无法链接到 Github !" && exit 0
     if [[ -e "/etc/init.d/aria2" ]]; then
         rm -rf /etc/init.d/aria2
@@ -668,8 +673,49 @@ Update_Shell() {
     if [[ -n $(crontab_update_status) ]]; then
         crontab_update_stop
     fi
-    wget -N "https://raw.githubusercontent.com/P3TERX/aria2.sh/master/aria2.sh" && chmod +x aria2.sh
+    wget -N "https://raw.githubusercontent.com/spark135246/aria2.sh/master/aria2.sh" && chmod +x aria2.sh
     echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !(注意：因为更新方式为直接覆盖当前运行的脚本，所以可能下面会提示一些报错，无视即可)" && exit 0
+}
+
+# 开关rclone自动上传
+Switch_Rclone() {
+    # 读取配置文件
+    Read_config
+    read -e -p " 是否开启？（y开启/n关闭） [0-12]:" num
+    if [[ ${num} == "y" ]]; then
+        sed -i 's@^on-download-complete.*@on-download-complete='${aria2_conf_dir}'/upload.sh@' ${aria2_conf}
+    else
+        sed -i 's@^on-download-complete.*@on-download-complete='${aria2_conf_dir}'/clean.sh@' ${aria2_conf}
+    fi
+    # 重启
+    Restart_aria2
+}
+
+# 配置rclone名称
+Set_Rclone_Name() {
+    # 读取配置文件
+    Read_config
+    read -e -p " 请输入名称:" num
+    # 修改标识符
+    sed -i 's@drive-name=.*@drive-name='${num}'@' ${aria2_conf_dir}/script.conf
+    # 重启
+    Restart_aria2
+}
+
+# 配置rclone上传目录
+Set_Rclone_Dir() {
+    # 读取配置文件
+    Read_config
+    read -e -p " 请输入目录:" num
+    # 修改标识符
+    sed -i 's@drive-dir=.*@drive-dir='${num}'@' ${aria2_conf_dir}/script.conf
+    # 重启
+    Restart_aria2
+}
+
+# 测试Rclone连接
+Check_Rclone() {
+    bash ${aria2_conf_dir}/upload.sh
 }
 
 echo && echo -e " Aria2 一键安装管理脚本 增强版 ${Red_font_prefix}[v${sh_ver}]${Font_color_suffix} by \033[1;35mP3TERX.COM\033[0m
@@ -691,6 +737,11 @@ echo && echo -e " Aria2 一键安装管理脚本 增强版 ${Red_font_prefix}[v$
  ———————————————————————
  ${Green_font_prefix}11.${Font_color_suffix} 手动更新 BT-Tracker
  ${Green_font_prefix}12.${Font_color_suffix} 自动更新 BT-Tracker
+ ———————————————————————
+ ${Green_font_prefix}21.${Font_color_suffix} 开关rclone
+ ${Green_font_prefix}22.${Font_color_suffix} 配置rclone网盘名称
+ ${Green_font_prefix}23.${Font_color_suffix} 修改上传目录
+ ${Green_font_prefix}24.${Font_color_suffix} 测试rclone连接
  ———————————————————————" && echo
 if [[ -e ${aria2c} ]]; then
     check_pid
@@ -750,6 +801,18 @@ case "$num" in
     ;;
 12)
     Update_bt_tracker_cron
+    ;;
+21)
+    Switch_Rclone
+    ;;
+22)
+    Set_Rclone_Name
+    ;;
+23)
+    Set_Rclone_Dir
+    ;;
+24)
+    Check_Rclone
     ;;
 *)
     echo
